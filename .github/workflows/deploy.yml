@@ -1,0 +1,29 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python manage.py test
+        env:
+          SECRET_KEY: ci-test-only-value-not-used-in-production
+          DEBUG: "True"
+          ALLOWED_HOSTS: localhost,127.0.0.1
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, __APP_NAME__-lightsail]
+    steps:
+      - name: Run deploy.sh
+        run: /opt/__APP_NAME__/deploy/deploy.sh

@@ -1,0 +1,51 @@
+[Unit]
+Description=Gunicorn daemon for __APP_NAME__
+After=network.target
+
+[Service]
+# Dedicated, unprivileged system account — do not run as root or as your
+# login user. Create it with:
+# sudo adduser --system --group --no-create-home __APP_NAME__
+User=__APP_NAME__
+Group=__APP_NAME__
+
+WorkingDirectory=/opt/__APP_NAME__
+# __APP_NAME__ is a --no-create-home system user, so its passwd entry points
+# HOME at /nonexistent; give it a real, writable one under ReadWritePaths so
+# anything gunicorn tries to write relative to $HOME doesn't hit EROFS.
+Environment=HOME=/opt/__APP_NAME__
+EnvironmentFile=/opt/__APP_NAME__/.env
+
+# RuntimeDirectory gives us a systemd-managed /run/__APP_NAME__ that's
+# recreated (with correct ownership) on every boot, since /run is tmpfs.
+#
+# The socket file's own permissions come from --umask 007 below, not this
+# directory mode — anyone who needs to connect (nginx's www-data, and the
+# deploy user running deploy.sh's own health check) has to be a member of
+# the `__APP_NAME__` group; see docs/deployment_lightsail.md / docs/cicd.md
+# for the `usermod -aG __APP_NAME__` step. Widening this directory mode
+# alone doesn't help, since the socket file itself still blocks non-group
+# access.
+RuntimeDirectory=__APP_NAME__
+RuntimeDirectoryMode=0750
+
+ExecStart=/opt/__APP_NAME__/.venv/bin/gunicorn \
+    --workers 3 \
+    --umask 007 \
+    --bind unix:/run/__APP_NAME__/gunicorn.sock \
+    --access-logfile - \
+    --error-logfile - \
+    __APP_NAME__.wsgi:application
+
+Restart=always
+RestartSec=5
+
+# Basic hardening — the service only needs to read the app directory and
+# write to the runtime socket dir, the sqlite file, and its own logs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/__APP_NAME__
+
+[Install]
+WantedBy=multi-user.target
